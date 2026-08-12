@@ -1,10 +1,12 @@
 # SEMDynamics.jl
 
+| **Documentation** | **Tests** | **License** |
+|:---:|:---:|:---:|
+| [![Stable documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://vanyansin2000.github.io/SEMDynamics.jl/stable/) [![Development documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://vanyansin2000.github.io/SEMDynamics.jl/dev/) | [![CI](https://github.com/vanyansin2000/SEMDynamics.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/vanyansin2000/SEMDynamics.jl/actions/workflows/CI.yml) | [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-green.svg)](LICENSE) |
+
 `SEMDynamics.jl` 是一个用于地月受限多体动力学数值计算的 Julia 包。当前提供圆型受限三体问题（CR3BP）、地月旋转系双圆四体问题（BCR4BP）的动力学方程、事件检测、坐标转换、轨迹可视化，以及按指定周期生成平面远距逆行轨道（DRO）的工具。
 
 > 本项目使用无量纲的旋转坐标系；除非另有说明，时间和周期均为无量纲量。
-
-[开发版文档](https://vanyansin2000.github.io/SEMDynamics.jl/dev/) · [API 参考](https://vanyansin2000.github.io/SEMDynamics.jl/dev/api/)
 
 ## 安装
 
