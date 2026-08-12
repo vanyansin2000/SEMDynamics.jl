@@ -4,6 +4,8 @@
 
 > 本项目使用无量纲的旋转坐标系；除非另有说明，时间和周期均为无量纲量。
 
+[开发版文档](https://vanyansin2000.github.io/SEMDynamics.jl/dev/) · [API 参考](https://vanyansin2000.github.io/SEMDynamics.jl/dev/api/)
+
 ## 安装
 
 在 Julia REPL 中切换到包模式（按 `]`）后执行：
@@ -123,8 +125,13 @@ src/
 ├── PeriodicOrbits.jl    # 平面 DRO 打靶与绘图
 ├── Visualization.jl     # 轨迹与场景绘图
 └── Utils.jl             # 曲线交点与采样工具
-example/
-└── test1_po.jl          # 周期轨道使用示例
+test/
+└── runtests.jl          # 标准测试入口
+docs/
+├── make.jl              # Documenter 构建入口
+└── src/                 # 文档 Markdown 源文件
+examples/
+└── periodic_orbits.jl   # 周期轨道与绘图示例
 ```
 
 ## 数值约定与限制
@@ -137,15 +144,21 @@ example/
 
 ## 开发与验证
 
-在项目根目录运行最小验证：
+在项目根目录运行标准测试：
 
-```julia
-using SEMDynamics
-orbit = generate_DRO(P=pi)
-@assert isapprox(orbit.P, pi)
-@assert length(orbit.x0) == 6
+```sh
+julia --project=. -e 'using Pkg; Pkg.test()'
 ```
+
+本地构建 Documenter 文档：
+
+```sh
+julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+julia --project=docs docs/make.jl
+```
+
+更完整的发布检查见 [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)。
 
 ## 许可证
 
-本项目采用仓库中的 [GPL-3.0 许可证](LICENSE)。
+本项目采用仓库中的 [MPL-2.0 许可证](LICENSE)。

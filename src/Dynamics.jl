@@ -12,10 +12,9 @@ using DifferentialEquations
 using LinearAlgebra
 using StaticArrays
 using ForwardDiff
-using CairoMakie
 
 export cr3bp_eqm!
-export bcr4bp_eqm!, bcr4bp_eqmEMRot2D!
+export bcr4bp_eqm!
 
 export ode_params , integration
 

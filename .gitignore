@@ -22,3 +22,11 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Julia package development
+/Manifest.toml
+docs/Manifest.toml
+/.julia_depot/
+
+# Documenter.jl output
+/docs/build/

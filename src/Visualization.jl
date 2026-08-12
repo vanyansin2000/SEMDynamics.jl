@@ -16,7 +16,7 @@ using ..Dynamics
 include("magInsert.jl")
 
 # External dependencies
-using DifferentialEquations, LinearAlgebra, CairoMakie, Colors
+using DifferentialEquations, LinearAlgebra, CairoMakie
 
 const ps = Bcr4bp_Aux()
 const μ = ps.EMRot.μ

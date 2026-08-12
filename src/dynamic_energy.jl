@@ -26,9 +26,10 @@ end
 
 """计算四维平面 CR3BP 状态的 Jacobi 常数。"""
 @inline function compute_jacobi(u::SVector{4} , μ)
+    x, y, vx, vy = u
     r1 = sqrt((x + μ)^2    + y^2 )
     r2 = sqrt((x + μ - 1)^2 + y^2 )
-    JC = -(u[3]^2 + u[4]^2) + (u[1]^2 + u[2]^2) + 2 * (1 - μ) / r1 + 2 * μ / r2
+    JC = -(vx^2 + vy^2) + (x^2 + y^2) + 2 * (1 - μ) / r1 + 2 * μ / r2
     return JC
 end
 

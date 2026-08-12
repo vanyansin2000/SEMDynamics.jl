@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+SEMDynamics = "e4974282-f47c-4920-baad-a3ebf6911431"
+
+[compat]
+Documenter = "1"
