@@ -1,5 +1,7 @@
 # SEMDynamics.jl
 
+English | [中文](README.zh.md)
+
 | Documentation | Build | License |
 |:---:|:---:|:---:|
 | [![Stable documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://vanyansin2000.github.io/SEMDynamics.jl/stable/) [![Development documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://vanyansin2000.github.io/SEMDynamics.jl/dev/) | [![CI](https://github.com/vanyansin2000/SEMDynamics.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/vanyansin2000/SEMDynamics.jl/actions/workflows/CI.yml) | [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-green.svg)](LICENSE) |
@@ -36,7 +38,7 @@ using SEMDynamics
 
 u0 = [0.8, 0.1, 0.02, -0.03] # [x, y, vx, vy]
 ode_args = (; reltol = 1e-12 , abstol = 1e-12) # default 
-uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm! , ode_args , Bcr4bp_aux())) 
+uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm! , ode_args , Bcr4bp_Aux()))
 # or simply
 uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm!)) 
 ```

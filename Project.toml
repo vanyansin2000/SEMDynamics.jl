@@ -1,6 +1,6 @@
 name = "SEMDynamics"
 uuid = "e4974282-f47c-4920-baad-a3ebf6911431"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["Wang Yangxin <vanyansin@gmail.com>"]
 
 [deps]
@@ -14,12 +14,6 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
-CairoMakie = "0.15"
-DifferentialEquations = "8"
-ForwardDiff = "1"
-NonlinearSolve = "4"
-Reexport = "1"
-StaticArrays = "1"
 julia = "1.12"
 
 [extras]

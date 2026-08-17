@@ -89,21 +89,21 @@ end
 ##————————————————————————————————————————————————————————————————————————————————————
 #停止积分事件 1碰撞
 # 撞击事件条件函数
-"""判断状态是否进入第二主天体半径乘以 `scale` 的碰撞区域。"""
+"""第二主天体表面的有符号距离；负值表示位于碰撞区域内。"""
 function p2_collision_condition(u, t, integrator , scale)
     p = integrator.p  # 获取系统参数
     μ = p.EMRot.μ
 
     _ , r2 = state_from_r1_r2(u , μ)
-    return r2 -  scale*p.EMRot.r_p2 < 0  # 当返回true时触发事件
+    return r2 - scale * p.EMRot.r_p2
 end
 
-"""判断状态是否进入第一主天体半径乘以 `scale` 的碰撞区域。"""
+"""第一主天体表面的有符号距离；负值表示位于碰撞区域内。"""
 function p1_collision_condition(u, t, integrator , scale )
     p = integrator.p  # 获取系统参数
     μ = p.EMRot.μ
     r1 , _ = state_from_r1_r2(u, μ)
-    return r1 -  scale*p.EMRot.r_p1 < 0  # 当返回true时触发事件
+    return r1 - scale * p.EMRot.r_p1
 end
 
 # 撞击事件影响函数：终止积分
@@ -142,14 +142,16 @@ end
 function cb_p2collision(event_storage::Vector{Event} ;terminate = true , scale = 1.0)
     condition_wrapper(u, t, integrator) = p2_collision_condition(u, t, integrator, scale)
     affect_wrapper = (integrator) -> affect_p2collision!(integrator, event_storage, terminate)
-    return ContinuousCallback(condition_wrapper, affect_wrapper , rootfind = false)
+    # Collision entry is a positive-to-negative crossing.  Use the negative
+    # crossing callback and locate the surface before the singular interior.
+    return ContinuousCallback(condition_wrapper, nothing, affect_wrapper; rootfind=true)
 end
 
 """创建第一主天体碰撞的连续回调，并将事件写入 `event_storage`。"""
 function cb_p1collision(event_storage::Vector{Event} ;terminate = true, scale = 1.0)
     condition_wrapper(u, t, integrator) = p1_collision_condition(u, t, integrator, scale)
     affect_wrapper = (integrator) -> affect_p1collision!(integrator, event_storage, terminate)
-    return ContinuousCallback(condition_wrapper, affect_wrapper , rootfind = false)
+    return ContinuousCallback(condition_wrapper, nothing, affect_wrapper; rootfind=true)
 end
 
 
