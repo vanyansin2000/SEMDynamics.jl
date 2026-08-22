@@ -1,3 +1,4 @@
+"""Numerical utilities for trajectory intersections and curve sampling."""
 module Utils
 
 export curve_intersect , uniform_sample_curve
@@ -5,20 +6,36 @@ using DifferentialEquations
 using LinearAlgebra , Statistics
 
 """
-    curve_intersect(trajectory1, trajectory2)
+    curve_intersect(trajectory1, trajectory2; samples=800) -> (states1, states2)
 
 在两条二维 ODE 轨迹的线性采样折线上寻找交点，按第一条轨迹的时间排序后返回两侧
 对应的插值状态；若没有交点则返回 `(nothing, nothing)`。
+
+# Arguments
+- `trajectory1`, `trajectory2`: 具有稠密插值的 `ODESolution`；每个状态的前两个
+  分量作为平面坐标。
+
+# Keywords
+- `samples=800`: 每条轨迹用于折线近似的采样点数，至少为 2。
+
+# Returns
+存在交点时返回 `(states1, states2)`，两者按 `trajectory1` 的交点时间排序；无交点
+时返回 `(nothing, nothing)`。该算法检测的是采样折线交点，精度受 `samples` 控制。
 """
-function curve_intersect(Traj1::ODESolution, Traj2::ODESolution)
-    t1 = range(Traj1.t[1], Traj1.t[end], 800)
-    t2 = range(Traj2.t[1], Traj2.t[end], 800)
+function curve_intersect(
+    Traj1::ODESolution,
+    Traj2::ODESolution;
+    samples::Integer=800,
+)
+    samples >= 2 || throw(ArgumentError("samples must be at least 2."))
+    t1 = range(Traj1.t[1], Traj1.t[end]; length=samples)
+    t2 = range(Traj2.t[1], Traj2.t[end]; length=samples)
 
     u1 = Traj1(t1).u
     u2 = Traj2(t2).u
 
-    x1 = [u[1] for u in u1]; y1 = [u[2] for u in u1]
-    x2 = [u[1] for u in u2]; y2 = [u[2] for u in u2]
+    x1 = getindex.(u1, 1); y1 = getindex.(u1, 2)
+    x2 = getindex.(u2, 1); y2 = getindex.(u2, 2)
 
     intersections = find_intersections(x1, y1, x2, y2, t1, t2, Traj1, Traj2)
 
@@ -33,9 +50,17 @@ function curve_intersect(Traj1::ODESolution, Traj2::ODESolution)
     return Traj1(t1_points), Traj2(t2_points)
 end
 
-"""枚举两组二维折线段的相交对，并计算每个交点在两条 ODE 解上的插值状态。"""
+"""
+    find_intersections(x1, y1, x2, y2, t1, t2, trajectory1, trajectory2)
+        -> Vector{Tuple}
+
+枚举两组二维折线段的相交对，返回两条轨迹的交点时间和插值状态。
+"""
 function find_intersections(x1, y1, x2, y2, t1, t2, Traj1, Traj2)
-    intersections = []
+    time_type = promote_type(eltype(t1), eltype(t2))
+    state1_type = typeof(Traj1(first(t1)))
+    state2_type = typeof(Traj2(first(t2)))
+    intersections = Tuple{time_type,state1_type,time_type,state2_type}[]
     n1, n2 = length(x1)-1, length(x2)-1
     
     for i in 1:n1, j in 1:n2
@@ -72,7 +97,12 @@ function find_intersections(x1, y1, x2, y2, t1, t2, Traj1, Traj2)
     return intersections
 end
 
-"""返回两条二维线段的交点和各自线性参数；平行或不相交时返回 `nothing`。"""
+"""
+    segment_intersection(x1, y1, x2, y2, x3, y3, x4, y4)
+        -> (point, t, u)
+
+返回两条二维线段的交点及各自线性参数；平行或不相交时 `point` 为 `nothing`。
+"""
 function segment_intersection(x1, y1, x2, y2, x3, y3, x4, y4)
     # 向量叉积法计算线段交点[1](@ref)
     denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
@@ -93,18 +123,28 @@ end
 
 
 """
-    uniform_sample_curve(points, n_samples; start_idx=nothing)
+    uniform_sample_curve(points, n_samples; start_idx=nothing) -> Vector{Int}
 
-在分布呈曲线的点集中均匀采样。
-- points: N x 2 的矩阵或 Point2f 数组
-- n_samples: 需要采样的点数
-- start_idx: (可选) 指定曲线起始点的索引
+先用最近邻路径排序点集，再按该路径的累计弧长近似均匀选点。
 
-返回: 采样出的点的原始索引列表 Vector{Int}
+# Arguments
+- `points`: 每行一个点的 `N × D` 实数矩阵。
+- `n_samples`: 目标采样数量，必须位于 `1:N`。
+
+# Keywords
+- `start_idx=nothing`: 路径起点的原始行索引；省略时选择离点集质心最远的点。
+
+# Returns
+返回采样点在原矩阵中的行索引。相邻目标弧长映射到同一点时会去重，因此极端情况下
+返回数量可能少于 `n_samples`。
 """
 function uniform_sample_curve(points::AbstractMatrix, n_samples::Int; start_idx=nothing)
     N = size(points, 1)
-    @assert n_samples <= N "采样数不能大于点总数"
+    1 <= n_samples <= N || throw(ArgumentError("n_samples must be between 1 and $N."))
+    size(points, 2) > 0 || throw(ArgumentError("points must have at least one column."))
+    if !isnothing(start_idx)
+        1 <= start_idx <= N || throw(BoundsError(points, (start_idx, :)))
+    end
     
     # === 1. 点集排序 (Nearest Neighbor Path) ===
     # 注意：对于复杂曲线（如螺旋或U型），简单的最近邻可能会出错。
@@ -117,8 +157,15 @@ function uniform_sample_curve(points::AbstractMatrix, n_samples::Int; start_idx=
     if isnothing(start_idx)
         # 简单策略：取x最小的点作为起点（假设曲线大概是横向的）
         # 或者：取距离重心最远的点
-        center = mean(points, dims=1)
-        dists_to_center = vec(sum(abs2, points .- center, dims=2))
+        center = vec(mean(points, dims=1))
+        dists_to_center = Vector{Float64}(undef, N)
+        @inbounds for i in 1:N
+            distance² = 0.0
+            for column in axes(points, 2)
+                distance² += abs2(points[i, column] - center[column])
+            end
+            dists_to_center[i] = distance²
+        end
         current_idx = argmax(dists_to_center) # 选一个“端点”
     else
         current_idx = start_idx
@@ -134,13 +181,14 @@ function uniform_sample_curve(points::AbstractMatrix, n_samples::Int; start_idx=
         
         # 暴力搜索 (O(N^2))，对于 N < 5000 足够快
         # 如果 N 很大，建议使用 KDTree
-        p_curr = points[current_idx, :]
-        
-        for i in 1:N
+        @inbounds for i in 1:N
             if !visited[i]
-                d = norm(points[i, :] - p_curr)
-                if d < min_dist
-                    min_dist = d
+                distance² = 0.0
+                for column in axes(points, 2)
+                    distance² += abs2(points[i, column] - points[current_idx, column])
+                end
+                if distance² < min_dist
+                    min_dist = distance²
                     next_idx = i
                 end
             end
@@ -156,30 +204,39 @@ function uniform_sample_curve(points::AbstractMatrix, n_samples::Int; start_idx=
     end
     
     # === 2. 计算累积弧长 ===
-    ordered_points = points[indices_ordered, :]
-    # 计算相邻点距离
-    diffs = ordered_points[2:end, :] .- ordered_points[1:end-1, :]
-    dists = sqrt.(sum(abs2, diffs, dims=2))
-    
-    # 累积弧长 (从0开始)
-    cum_dist = [0.0; cumsum(dists , dims =1)]
+    cum_dist = zeros(Float64, length(indices_ordered))
+    @inbounds for path_index in 2:length(indices_ordered)
+        previous_index = indices_ordered[path_index - 1]
+        current_index = indices_ordered[path_index]
+        distance² = 0.0
+        for column in axes(points, 2)
+            distance² += abs2(points[current_index, column] - points[previous_index, column])
+        end
+        cum_dist[path_index] = cum_dist[path_index - 1] + sqrt(distance²)
+    end
     total_length = cum_dist[end]
     
     # === 3. 均匀采样 ===
     # 目标弧长位置
     target_dists = range(0, total_length, length=n_samples)
     
-    selected_indices_in_ordered = Int64[]
+    selected_indices_in_ordered = Int[]
     
     # 对每个目标位置，寻找原数据中弧长最接近的那个点
     # 这里使用简单的搜索，因为 cum_dist 是单调的
     for target in target_dists
-        # 找到 cum_dist 中与 target 差值最小的索引
-        idx_in_ordered = argmin(abs.(cum_dist .- target))
-        push!(selected_indices_in_ordered, idx_in_ordered[1])
+        upper = searchsortedfirst(cum_dist, target)
+        selected = if upper <= 1
+            1
+        elseif upper > length(cum_dist)
+            length(cum_dist)
+        elseif target - cum_dist[upper - 1] <= cum_dist[upper] - target
+            upper - 1
+        else
+            upper
+        end
+        push!(selected_indices_in_ordered, selected)
     end
-    
-    println(selected_indices_in_ordered )
     # 映射回原始索引
     final_indices = indices_ordered[selected_indices_in_ordered]
     

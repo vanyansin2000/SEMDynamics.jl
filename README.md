@@ -12,7 +12,7 @@ the circular restricted three-body problem (CR3BP) and the Earth--Moon
 bicircular restricted four-body problem (BCR4BP), together with state
 transition-matrix propagation, event callbacks, coordinate transformations,
 trajectory plotting, and differential correction of planar distant retrograde
-orbits (DROs).
+orbits (DROs) and spatial halo orbits.
 
 Unless stated otherwise, states are expressed in the nondimensional rotating
 frame and times and periods are nondimensional.
@@ -67,21 +67,42 @@ orbit = generate_DRO(P=3.4, continuation_step=0.05)
 ```
 
 Smaller values of `continuation_step` are generally more robust but require
-more corrections.  A closer two-element seed `[x, vy]` and its corresponding
-period can also be supplied explicitly:
+more corrections. Every periodic-orbit seed uses the same complete six-state
+form `[x, y, z, vx, vy, vz]`; a closer seed and its corresponding period can
+also be supplied explicitly:
 
 ```julia
 orbit = generate_DRO(
     P=3.4,
-    seed=[1.1754, -0.4943],
+    seed=[1.1754, 0.0, 0.0, 0.0, -0.4943, 0.0],
     seed_period=pi,
 )
 ```
 
-The current high-level generator is limited to planar CR3BP DROs, whose initial
-state is `[x, 0, 0, 0, vy, 0]`.  The lower-level
-`orbit_shooting(residual!, initial_guess, parameters)` interface can be used to
-define differential corrections for other orbit families.
+### Generate halo orbits and a 9:2 NRHO
+
+Halo families are selected by their `branch` and libration point. The initial
+state is a crossing of the x-z symmetry plane, `[x, 0, z, 0, vy, 0]`.
+
+```julia
+northern_l1 = generate_halo(branch=:northern, lp=:L1)
+southern_l2 = generate_halo(branch=:southern, lp=:L2)
+
+# Continue the selected family to another nondimensional period.
+continued = generate_halo(branch=:northern, lp=:L1, P=2.75)
+
+# Continue the southern L2 family to its 9:2 lunar-synodic resonant period.
+nrho = generate_nrho_9_2()
+```
+
+Halo and DRO differential correction use the same unknowns `[x, z, vy]`, the
+same half-period conditions `[y, vx, vz] = 0`, and a default shooting tolerance
+of `1e-10`. Halo period continuation defaults to a step of `0.005`.
+
+The lower-level `orbit_shooting(dynamics, state_guess, P)` interface accepts a
+complete six-state and returns the corrected symmetry-plane state. The generic
+`orbit_shooting(residual!, initial_guess, parameters)` overload remains
+available for custom corrections.
 
 ### Detect events
 
@@ -93,11 +114,23 @@ using DifferentialEquations
 
 aux = Bcr4bp_Aux()
 events = dynamic_events()
-callback = CallbackSet(cb_p2collision(events), cb_escape(events))
+callback = CallbackSet(
+    cb_p2collision(events),
+    cb_enter(events; terminate=false),
+    cb_escape(events),
+)
 
 u0 = [1.05, 0.0, 0.0, 0.2]
 problem = ODEProblem(bcr4bp_eqm!, u0, (0.0, 10.0), aux)
 solution = solve(problem, Vern7(); callback, reltol=1e-12, abstol=1e-12)
+```
+
+`cb_enter` and `cb_escape` detect inward and outward crossings of the same P2
+sphere. Lunar apsides use the same combined interface as terrestrial apsides:
+
+```julia
+earth_apses = cb_apse_p1(events; terminate_perigee=false, terminate_apogee=false)
+lunar_apses = cb_apse_p2(events; terminate_perilune=false, terminate_apolune=false)
 ```
 
 ### Plot an orbit
@@ -132,9 +165,13 @@ For the CR3BP, `compute_jacobi` evaluates the Jacobi constant.
 | `cr3bp_eqm!` | CR3BP equations of motion for planar, spatial, and STM-augmented states. |
 | `bcr4bp_eqm!` | Earth--Moon BCR4BP equations of motion for planar, spatial, and STM-augmented states. |
 | `generate_DRO(P=...)` | Generates a differentially corrected planar CR3BP DRO. |
+| `generate_halo(branch=..., lp=...)` | Generates northern or southern L1/L2 CR3BP halo orbits. |
+| `generate_nrho_9_2()` | Continues the L2 halo branch to its 9:2 lunar-synodic period. |
 | `orbit_shooting(...)` | General nonlinear shooting interface. |
 | `compute_jacobi` | Computes the CR3BP Jacobi constant. |
-| `cb_*` | Collision, escape, energy-crossing, and apsis event callbacks. |
+| `cb_enter` / `cb_escape` | Detects inward/outward crossings of the P2 sphere. |
+| `cb_apse_p1` / `cb_apse_p2` | Detects perigee/apogee or perilune/apolune events. |
+| `cb_*` | Collision, energy-crossing, section-crossing, and other event callbacks. |
 | `cr3bp_inertial_to_rotating` / `cr3bp_rotating_to_inertial` | Converts CR3BP states between inertial and rotating frames. |
 | `plotPO!`, `plot_traj_rot!`, `plot_traj_inertial!` | Makie plotting helpers for periodic or integrated trajectories. |
 
@@ -142,6 +179,7 @@ Use Julia help mode to inspect exported methods and their arguments:
 
 ```julia
 help?> generate_DRO
+help?> generate_halo
 ```
 
 ## Documentation

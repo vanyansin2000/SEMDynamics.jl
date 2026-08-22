@@ -34,6 +34,43 @@ orbit.x0
 orbit.C
 ```
 
+`generate_halo` 使用 `branch=:northern` 或 `:southern` 以及 `lp=:L1` 或
+`:L2` 选择空间 Halo 轨道族：
+
+```julia
+halo = generate_halo(branch=:northern, lp=:L1)
+nrho = generate_nrho_9_2()
+```
+
+Halo 初值位于 x-z 对称面，形式为 `[x, 0, z, 0, vy, 0]`。传入 `P` 可沿所选
+分支延拓到指定的无量纲周期。`generate_nrho_9_2()` 使用月球会合周期定义的
+`P=4pi/(9abs(ws))`；Halo 打靶默认容差为 `1e-10`，默认周期步长为 `0.005`。
+所有 Halo 与 DRO seed 均须是完整六维状态，且使用同一组 `[x, z, vy]` 打靶
+未知量与 `[y, vx, vz] = 0` 半周期条件。
+
+## 动力学事件
+
+`cb_enter` 与 `cb_escape` 分别检测向内、向外穿越第二主天体作用球；`scale`
+用于缩放默认球半径，`terminate` 控制是否在事件处终止积分：
+
+```julia
+events = dynamic_events()
+sphere_callbacks = CallbackSet(
+    cb_enter(events; terminate=false),
+    cb_escape(events; terminate=false),
+)
+```
+
+第一、第二主天体的近远拱点采用对称接口：
+
+```julia
+cb_apse_p1(events; terminate_perigee=false, terminate_apogee=false)
+cb_apse_p2(events; terminate_perilune=false, terminate_apolune=false)
+```
+
+第二个回调记录 `:perilune` 和 `:apolune`。兼容接口 `cb_perilune` 仍然可用，
+并新增了仅检测远月点的 `cb_apolune`。
+
 ## 本地构建文档
 
 首次构建时，在仓库根目录执行：

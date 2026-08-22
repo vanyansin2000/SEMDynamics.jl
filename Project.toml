@@ -1,12 +1,13 @@
 name = "SEMDynamics"
 uuid = "e4974282-f47c-4920-baad-a3ebf6911431"
-version = "0.1.9"
+version = "0.2.0"
 authors = ["Wang Yangxin <vanyansin@gmail.com>"]
 
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"

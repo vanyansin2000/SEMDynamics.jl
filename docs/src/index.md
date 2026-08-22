@@ -4,7 +4,7 @@
 坐标变换、轨迹可视化和周期轨道计算。
 
 ```@contents
-Pages = ["guide.md", "api.md"]
+Pages = ["tutorial.md", "guide.md", "api.md"]
 Depth = 2
 ```
 
@@ -40,3 +40,6 @@ derivative
 
 函数说明直接取自源码中的 Julia docstring。新增公开接口时，请在函数或类型定义前编写 docstring，
 并将其加入 [API 参考](@ref)。
+
+第一次使用本包时，建议从[入门教程](@ref)开始；教程覆盖积分、事件、坐标转换、
+周期轨道和二维/三维绘图的完整基础流程。

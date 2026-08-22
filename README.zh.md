@@ -8,7 +8,7 @@
 
 `SEMDynamics.jl` 是一个用于地月受限多体问题数值轨迹分析的 Julia 包。它提供圆型受限三体问题
 （CR3BP）和地月双圆受限四体问题（BCR4BP）的运动方程，以及状态转移矩阵传播、事件回调、
-坐标变换、轨迹绘图和平面远距逆行轨道（DRO）的微分修正功能。
+坐标变换、轨迹绘图，以及平面远距逆行轨道（DRO）和空间 Halo 轨道的微分修正功能。
 
 除非另有说明，状态均以无量纲旋转坐标系表示，时间和周期也均为无量纲量。
 
@@ -57,19 +57,38 @@ orbit.C  # Jacobi 常数
 orbit = generate_DRO(P=3.4, continuation_step=0.05)
 ```
 
-较小的 `continuation_step` 通常更稳健，但需要更多次修正。也可以显式提供更接近目标轨道的二元种子
-`[x, vy]` 及其对应周期：
+较小的 `continuation_step` 通常更稳健，但需要更多次修正。所有周期轨道种子均采用完整六维形式
+`[x, y, z, vx, vy, vz]`；也可以显式提供更接近目标轨道的种子及其对应周期：
 
 ```julia
 orbit = generate_DRO(
     P=3.4,
-    seed=[1.1754, -0.4943],
+    seed=[1.1754, 0.0, 0.0, 0.0, -0.4943, 0.0],
     seed_period=pi,
 )
 ```
 
-目前高层生成器仅支持平面 CR3BP DRO，其初始状态为 `[x, 0, 0, 0, vy, 0]`。可以使用底层接口
-`orbit_shooting(residual!, initial_guess, parameters)` 为其他轨道族定义微分修正。
+### 生成 Halo 轨道与 9:2 NRHO
+
+Halo 轨道族使用 `branch` 和平动点选择。初值位于 x-z 对称面，形式为
+`[x, 0, z, 0, vy, 0]`。
+
+```julia
+northern_l1 = generate_halo(branch=:northern, lp=:L1)
+southern_l2 = generate_halo(branch=:southern, lp=:L2)
+
+# 将所选轨道族延拓到另一个无量纲周期
+continued = generate_halo(branch=:northern, lp=:L1, P=2.75)
+
+# 将南族 L2 延拓至 9:2 月球会合共振周期
+nrho = generate_nrho_9_2()
+```
+
+Halo 与 DRO 使用相同的 `[x, z, vy]` 未知量和 `[y, vx, vz] = 0` 半周期条件，
+默认打靶容差均为 `1e-10`。Halo 的默认周期延拓步长为 `0.005`。
+
+底层接口 `orbit_shooting(dynamics, state_guess, P)` 接受完整六维初值；通用重载
+`orbit_shooting(residual!, initial_guess, parameters)` 仍可用于自定义修正。
 
 ### 检测事件
 
@@ -81,11 +100,23 @@ using DifferentialEquations
 
 aux = Bcr4bp_Aux()
 events = dynamic_events()
-callback = CallbackSet(cb_p2collision(events), cb_escape(events))
+callback = CallbackSet(
+    cb_p2collision(events),
+    cb_enter(events; terminate=false),
+    cb_escape(events),
+)
 
 u0 = [1.05, 0.0, 0.0, 0.2]
 problem = ODEProblem(bcr4bp_eqm!, u0, (0.0, 10.0), aux)
 solution = solve(problem, Vern7(); callback, reltol=1e-12, abstol=1e-12)
+```
+
+`cb_enter` 与 `cb_escape` 分别检测向内、向外穿越同一个第二主天体作用球。
+近月点/远月点与近地点/远地点采用相同的组合接口：
+
+```julia
+earth_apses = cb_apse_p1(events; terminate_perigee=false, terminate_apogee=false)
+lunar_apses = cb_apse_p2(events; terminate_perilune=false, terminate_apolune=false)
 ```
 
 ### 绘制轨道
@@ -120,9 +151,13 @@ Jacobi 常数。
 | `cr3bp_eqm!` | 平面、空间及带 STM 状态的 CR3BP 运动方程。 |
 | `bcr4bp_eqm!` | 平面、空间及带 STM 状态的地月 BCR4BP 运动方程。 |
 | `generate_DRO(P=...)` | 生成经过微分修正的平面 CR3BP DRO。 |
+| `generate_halo(branch=..., lp=...)` | 生成北族或南族的 L1/L2 CR3BP Halo 轨道。 |
+| `generate_nrho_9_2()` | 将 L2 Halo 分支延拓至 9:2 月球会合共振周期。 |
 | `orbit_shooting(...)` | 通用非线性打靶接口。 |
 | `compute_jacobi` | 计算 CR3BP Jacobi 常数。 |
-| `cb_*` | 碰撞、逃逸、能量穿越和拱点事件回调。 |
+| `cb_enter` / `cb_escape` | 检测向内/向外穿越第二主天体作用球。 |
+| `cb_apse_p1` / `cb_apse_p2` | 检测近地点/远地点或近月点/远月点。 |
+| `cb_*` | 碰撞、能量穿越、截面穿越等其他事件回调。 |
 | `cr3bp_inertial_to_rotating` / `cr3bp_rotating_to_inertial` | 在惯性系和旋转系之间转换 CR3BP 状态。 |
 | `plotPO!`、`plot_traj_rot!`、`plot_traj_inertial!` | 用于周期轨道或积分轨迹的 Makie 绘图工具。 |
 
@@ -130,6 +165,7 @@ Jacobi 常数。
 
 ```julia
 help?> generate_DRO
+help?> generate_halo
 ```
 
 ## 文档

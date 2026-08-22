@@ -1,3 +1,9 @@
+"""
+    SEMDynamics
+
+Earth--Moon CR3BP/BCR4BP dynamics, event detection, coordinate transforms,
+periodic-orbit generation, numerical utilities, and Makie visualization.
+"""
 module SEMDynamics
 
 using Reexport

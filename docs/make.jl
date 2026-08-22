@@ -14,6 +14,7 @@ makedocs(
     ),
     pages=[
         "首页" => "index.md",
+        "入门教程" => "tutorial.md",
         "使用指南" => "guide.md",
         "API 参考" => "api.md",
     ],

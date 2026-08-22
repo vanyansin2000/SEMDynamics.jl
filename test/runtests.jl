@@ -1,5 +1,12 @@
 using Test
 using SEMDynamics
+using CairoMakie
+using DifferentialEquations
+using LinearAlgebra
+
+include("visualization.jl")
+include("periodic_orbits.jl")
+include("dynamic_events.jl")
 
 @testset "SEMDynamics.jl" begin
     @testset "parameters" begin
@@ -22,6 +29,18 @@ using SEMDynamics
         @test all(isfinite, derivative2d)
         @test derivative3d ≈ [derivative2d[1], derivative2d[2], 0.0,
                               derivative2d[3], derivative2d[4], 0.0]
+
+        state20 = [state2d; vec(Matrix{Float64}(I, 4, 4))]
+        derivative20 = similar(state20)
+        cr3bp_eqm!(derivative20, state20, aux, 0.0)
+        @test derivative20[1:4] ≈ derivative2d
+        @test all(isfinite, derivative20[5:end])
+
+        state42 = [state3d; vec(Matrix{Float64}(I, 6, 6))]
+        derivative42 = similar(state42)
+        cr3bp_eqm!(derivative42, state42, aux, 0.0)
+        @test derivative42[1:6] ≈ derivative3d
+        @test all(isfinite, derivative42[7:end])
         @test_throws ErrorException cr3bp_eqm!(zeros(5), zeros(5), aux, 0.0)
     end
 
@@ -33,6 +52,21 @@ using SEMDynamics
 
         @test all(isfinite, derivative)
         @test derivative[1:2] == state[3:4]
+
+        state20 = [state; vec(Matrix{Float64}(I, 4, 4))]
+        derivative20 = similar(state20)
+        bcr4bp_eqm!(derivative20, state20, aux, 0.25)
+        @test derivative20[1:4] ≈ derivative
+        @test all(isfinite, derivative20[5:end])
+
+        state3d = [state[1], state[2], 0.0, state[3], state[4], 0.0]
+        derivative3d = similar(state3d)
+        bcr4bp_eqm!(derivative3d, state3d, aux, 0.25)
+        state42 = [state3d; vec(Matrix{Float64}(I, 6, 6))]
+        derivative42 = similar(state42)
+        bcr4bp_eqm!(derivative42, state42, aux, 0.25)
+        @test derivative42[1:6] ≈ derivative3d
+        @test all(isfinite, derivative42[7:end])
         @test_throws ArgumentError bcr4bp_eqm!(zeros(5), zeros(5), aux, 0.0)
     end
 
@@ -46,6 +80,7 @@ using SEMDynamics
             recovered = cr3bp_rotating_to_inertial(μ, time, rotating; center)
             @test recovered ≈ state atol=1e-14
         end
+        @test_throws ArgumentError cr3bp_inertial_to_rotating(μ, time, state; center=:sun)
     end
 
     @testset "energy and equilibrium points" begin
@@ -55,6 +90,7 @@ using SEMDynamics
         state3d = [state2d[1], state2d[2], 0.0, state2d[3], state2d[4], 0.0]
 
         @test compute_jacobi(state2d, μ) ≈ compute_jacobi(state3d, μ)
+        @test_throws ArgumentError compute_jacobi(zeros(5), μ)
 
         x_l1 = solve_L1_L2_x(μ; which=:L1)
         x_l2 = solve_L1_L2_x(μ; which=:L2)
@@ -65,6 +101,12 @@ using SEMDynamics
             cr3bp_eqm!(derivative, [x, 0.0, 0.0, 0.0], aux, 0.0)
             @test derivative ≈ zeros(4) atol=1e-10
         end
+    end
+
+    @testset "curve sampling" begin
+        points = hcat(collect(0.0:4.0), zeros(5))
+        @test uniform_sample_curve(points, 3; start_idx=1) == [1, 3, 5]
+        @test_throws ArgumentError uniform_sample_curve(points, 0)
     end
 
     @testset "integration and events" begin

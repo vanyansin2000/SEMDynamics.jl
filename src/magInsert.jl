@@ -7,7 +7,11 @@ export MagInset
 # ─────────────────────────────────────────────────────────────────────────────
 # 数据坐标 → Figure 归一化坐标
 # ─────────────────────────────────────────────────────────────────────────────
-"""将 `ax` 内的数据坐标转换为所属 Figure 的归一化坐标。"""
+"""
+    data2norm(ax, x, y) -> (nx, ny)
+
+将二维轴内的数据坐标转换为所属 Figure 的 `[0, 1]` 归一化坐标。
+"""
 function data2norm(ax::Axis, x::Real, y::Real)
     fig_vp = ax.parent.scene.viewport[]
     ax_vp  = ax.scene.viewport[]
@@ -20,7 +24,11 @@ function data2norm(ax::Axis, x::Real, y::Real)
     return nx, ny
 end
 
-"""返回归一化边界框中 `"NW"`、`"SE"` 等角标对应的位置。"""
+"""
+    corner_pos(bbox, corner) -> (x, y)
+
+返回归一化边界框中 `"NW"`、`"NE"`、`"SW"` 或 `"SE"` 对应的角点。
+"""
 function corner_pos(bbox_norm::NTuple{4,Float64}, corner::String)
     xmin, xmax, ymin, ymax = bbox_norm
     cx = corner[2] == 'W' ? xmin : xmax
@@ -42,6 +50,24 @@ end
 
 在主轴 `ax` 的 `zoom_area` 加边框，并创建或填充一个显示该区域的放大轴。可用
 `conn_lines` 连接两处角点，或通过 `inset_ax` 使用调用方预先创建的插图轴。
+
+# Arguments
+- `fig`: 包含主轴的 Makie `Figure`。
+- `ax`: 要放大的二维主轴。
+- `zoom_area`: `(xmin, xmax, ymin, ymax)` 数据区域。
+- `inset_pos`: 自动创建插图时，插图在主轴数据坐标中的边界框。
+- `conn_lines`: `(zoom_corner, inset_corner)` 字符串元组，例如
+  `[("NW", "SW")]`。
+
+# Keywords
+- `inset_xscale`, `inset_yscale`: 插图轴坐标尺度。
+- `zoom_rect_color`, `zoom_rect_lw`: 主图放大框样式。
+- `connect_line_*`: 连接线样式。
+- `inset_ax=nothing`: 可选的外部 `Axis`；提供时只向该轴复制图元。
+- 其他关键字传递给自动创建的 `Axis`。
+
+# Returns
+返回新建或传入的插图 `Axis`。当前仅复制函数中列出的常见 Makie 图元类型。
 """
 function MagInset(
     fig::Figure,
@@ -136,7 +162,11 @@ function MagInset(
     return inset_ax
 end
 
-"""按已支持的 Makie 图元类型复制 `plt` 到插图轴，避免在两个 scene 间共享图元。"""
+"""
+    _copy_plot_to_axis!(ax, plot) -> nothing
+
+按已支持的 Makie 图元类型复制 `plot` 到插图轴，避免在两个 scene 间共享图元。
+"""
 function _copy_plot_to_axis!(ax::Axis, plt)
     T = typeof(plt)
 
