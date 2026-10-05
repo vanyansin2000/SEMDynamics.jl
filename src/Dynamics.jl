@@ -51,7 +51,7 @@ ode_params(dynamics) = ode_params(dynamics ,(;abstol = 1e-12 , reltol = 1e-12) ,
 
 """
     integration(x0, tspan, parameters; cb=nothing,
-                odeargs=parameters.dynamicsargs, interp_num=200)
+                odeargs=parameters.dynamicsargs, interp_num=200, return_solution=false)
         -> (final_state, times, states)
 
 使用 `Vern7` 积分 `parameters.dynamics`，并对稠密解进行等时间间隔采样。
@@ -65,10 +65,13 @@ ode_params(dynamics) = ode_params(dynamics ,(;abstol = 1e-12 , reltol = 1e-12) ,
 - `cb=nothing`: DifferentialEquations 回调或 `CallbackSet`。
 - `odeargs=parameters.dynamicsargs`: 覆盖默认的 `solve` 关键字。
 - `interp_num=200`: 输出采样点数量，必须为正整数。
+- `return_solution=false`: 为 `true` 时直接返回原始 `ODESolution`（包括终止或失败），
+  可检查 `sol.retcode`、`sol.t[end]` 和事件容器；不执行等间隔采样。
 
 # Returns
 成功时返回 `(final_state, times, states)`：终端状态、采样时间范围以及对应状态
-向量。求解器失败时返回 `(nothing, nothing, nothing)`。
+向量。求解器失败或 callback 主动终止时返回 `(nothing, nothing, nothing)`，
+避免打靶流程接受碰撞终止的轨迹。`return_solution=true` 时由调用者判断返回码。
 """
 function integration(
     x₀,
@@ -77,12 +80,16 @@ function integration(
     cb=nothing,
     odeargs=p.dynamicsargs,
     interp_num::Integer=200,
+    return_solution::Bool=false,
 )
     interp_num > 0 || throw(ArgumentError("interp_num must be positive."))
     solve_kwargs = isnothing(odeargs) ? NamedTuple() : odeargs
+
     prob = ODEProblem(p.dynamics , x₀ ,   tspan  , p.aux )
     sol = solve(prob, Vern7(); callback=cb, solve_kwargs...)
-    if !SciMLBase.successful_retcode(sol)
+    return_solution && return sol
+    # 默认拒绝 Terminated，避免打靶流程把碰撞终止误当作可行传播。
+    if sol.retcode ≠ ReturnCode.Success
         return nothing, nothing , nothing
     end
 

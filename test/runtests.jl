@@ -7,6 +7,7 @@ using LinearAlgebra
 include("visualization.jl")
 include("periodic_orbits.jl")
 include("dynamic_events.jl")
+include("usability.jl")
 
 @testset "SEMDynamics.jl" begin
     @testset "parameters" begin

@@ -193,7 +193,7 @@ end
 """
     plot_traj_ε2!(ax, sol, events; kwargs...) -> (energy_plot, rate_plot)
 
-绘制相对第二主天体的两体比机械能 `ε₂` 及其时间导数，并在曲线上标记事件。
+绘制相对第二主天体的两体比机械能 `ε₂` 及其时间导数，并在曲线上标记事件。导数采用 `sol.prob.f` 的实际动力学与 `sol.prob.p` 参数，支持平面、空间及 STM 状态。
 
 # Returns
 返回 `(energy_plot, rate_plot)` 两个 Makie `Lines` 图元。额外关键字传给两条曲线的
@@ -203,8 +203,10 @@ function plot_traj_ε2!(ax , sol, events; args...)
     t_range = range(sol.t[1], sol.t[end], length=1500)
     u_cart = sol(t_range).u
 
-    ε2 = compute_ε2.(u_cart ,t_range , μ)
-    ε2_dot = compute_ε2_dot.(u_cart , t_range , μ, ps)
+    aux = sol.prob.p
+    mass_parameter = aux.EMRot.μ
+    ε2 = compute_ε2.(u_cart, t_range, mass_parameter)
+    ε2_dot = compute_ε2_dot.(u_cart, t_range, mass_parameter, Ref(aux); dynamics=sol.prob.f)
 
     l1 = lines!(ax , t_range , ε2; args...)
     l2 = lines!(ax , t_range , ε2_dot ; linestyle = :dash, args...)
@@ -212,9 +214,9 @@ function plot_traj_ε2!(ax , sol, events; args...)
 
     for event in events
         marker = _event_marker(event.code)
-        scatter!(ax, event.time, compute_ε2(event.state, event.time, μ);
+        scatter!(ax, event.time, compute_ε2(event.state, event.time, mass_parameter);
                  marker, scatter_args...)
-        scatter!(ax, event.time, compute_ε2_dot(event.state, event.time, μ, ps);
+        scatter!(ax, event.time, compute_ε2_dot(event.state, event.time, mass_parameter, aux; dynamics=sol.prob.f);
                  marker, scatter_args...)
     end
 

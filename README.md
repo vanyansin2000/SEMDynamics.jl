@@ -43,6 +43,11 @@ uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm! , ode_args , B
 uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm!)) 
 ```
 
+By default, `integration` returns three `nothing` values on solver failure or
+callback termination, so shooting workflows reject collision trajectories. Use
+`return_solution=true` to obtain the native `ODESolution`, including partial
+results, and inspect `sol.retcode` and `sol.t[end]` yourself.
+
 ### Generate a planar DRO
 
 `generate_DRO` differentially corrects a planar CR3BP distant retrograde orbit
@@ -79,6 +84,8 @@ orbit = generate_DRO(
 )
 ```
 
+`orbit.sol` stores a dense solution on `[-P, 2P]` for interpolation across adjacent periods.
+
 ### Generate halo orbits and a 9:2 NRHO
 
 Halo families are selected by their `branch` and libration point. The initial
@@ -107,6 +114,8 @@ available for custom corrections.
 ### Detect events
 
 The package supplies callbacks compatible with DifferentialEquations.jl.
+Collision callbacks check the configured radius at step endpoints using a
+DiscreteCallback; they do not locate a boundary root.
 
 ```julia
 using SEMDynamics

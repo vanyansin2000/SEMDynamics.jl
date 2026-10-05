@@ -74,7 +74,7 @@ abstract type AbstractPeriodicOrbit end
 - `C::Float64`: 初值对应的 Jacobi 常数。
 - `P::Float64`: 无量纲完整周期。
 - `f`: 用于传播轨道的原位动力学函数。
-- `sol`: 在完整周期 `[0, P]` 上、带稠密插值的 ODE 解。
+- `sol`: 在 `[-P, 2P]` 上、带稠密插值的 ODE 解，供相邻周期查询以避免外插。
 """
 struct PeriodicOrbit{F,S} <: AbstractPeriodicOrbit
     x0::Vector{Float64}
@@ -87,11 +87,14 @@ end
 """
     integrate_orbit(f, x0, P; solver=Vern7(), kwargs...) -> ODESolution
 
-在 CR3BP 辅助参数下，从 `x0` 将动力学函数 `f` 积分一个正周期 `P`。关键字
+在默认地月辅助参数下，将自主周期轨道在 `t=0` 处的 `x0` 反向传播到 `-P`，再积分至 `2P`。
+这样保持 `x0` 的零时刻相位；反向和正向传播的数值误差仍受积分容差影响。
+保存相邻周期用于避免在 `[-P, 2P]` 内查询时发生外插。关键字
 参数会原样传给 `solve`，因而可覆盖误差容限或选择不同求解器。
 
 # Returns
-返回带稠密插值的 `ODESolution`；`P ≤ 0` 时抛出 `ArgumentError`。
+返回带稠密插值的 `ODESolution`；周期非有限或非正时抛出 `ArgumentError`，
+积分失败或提前终止时抛出 `ODESolveFailedError`。
 """
 function integrate_orbit(
     f::Function,
@@ -100,15 +103,23 @@ function integrate_orbit(
     solver=Vern7(),
     kwargs...,
 )
-    P > 0 || throw(ArgumentError("周期 P 必须为正数，得到 $P"))
-    problem = ODEProblem(f, Float64.(x0), (0.0, Float64(P)), Bcr4bp_Aux())
-    return solve(problem, solver; dense=true, save_everystep=true, kwargs...)
+    isfinite(P) && P > 0 || throw(ArgumentError("周期 P 必须为有限正数，得到 $P"))
+    # Anchor x0 at t=0 instead of assuming numerically exact periodic closure at -P.
+    backward_problem = ODEProblem(f, Float64.(x0), (0.0, -Float64(P)), Bcr4bp_Aux())
+    backward = solve(backward_problem, solver; dense=false, save_everystep=false, kwargs...)
+    SciMLBase.successful_retcode(backward) && backward.t[end] == -Float64(P) ||
+        throw(ODESolveFailedError("周期轨道反向传播失败（retcode=$(backward.retcode), t=$(backward.t[end])）。"))
+    problem = ODEProblem(f, backward.u[end], (-Float64(P), 2*Float64(P)), backward_problem.p)
+    sol = solve(problem, solver; dense=true, save_everystep=true, kwargs...)
+    SciMLBase.successful_retcode(sol) && sol.t[end] == last(problem.tspan) ||
+        throw(ODESolveFailedError("周期轨道传播未到达目标时间（retcode=$(sol.retcode), t=$(sol.t[end])）。"))
+    return sol
 end
 
 """
     make_periodic_orbit(f, x0, P; kwargs...) -> PeriodicOrbit
 
-由已修正的初值构造 `PeriodicOrbit`，并重新积分一个周期以得到可用于绘图和
+由已修正的初值构造 `PeriodicOrbit`，并在 `[-P, 2P]` 上重新积分以得到可用于绘图和
 插值的解。此函数不会再次执行打靶修正。
 
 # Keywords
@@ -211,6 +222,8 @@ function _symmetric_half_period_residual!(residual, u, parameters)
         reltol=integration_tol,
         save_everystep=false,
     )
+    SciMLBase.successful_retcode(solution) && solution.t[end] == parameters.P / 2 ||
+        throw(ODESolveFailedError("半周期打靶传播失败（retcode=$(solution.retcode), t=$(solution.t[end])）。"))
     final_state = solution.u[end]
     for (residual_index, state_index) in enumerate(SYMMETRY_RESIDUAL_INDICES)
         residual[residual_index] = final_state[state_index]
@@ -445,7 +458,7 @@ function generate_halo(
         z_sign,
         min_abs_z,
     )
-    return make_periodic_orbit(cr3bp_eqm!, x0, target_period; abstol=tol, reltol=tol)
+    return make_periodic_orbit(cr3bp_eqm!, x0, target_period)
 end
 
 """
@@ -518,7 +531,7 @@ function generate_DRO(
         continuation_step,
         tol,
     )
-    return make_periodic_orbit(cr3bp_eqm!, x0, P; abstol=tol, reltol=tol)
+    return make_periodic_orbit(cr3bp_eqm!, x0, P)
 end
 
 """

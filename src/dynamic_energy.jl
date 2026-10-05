@@ -7,10 +7,10 @@ export solve_L1_L2_x
 """
     compute_ε2(u, t, μ) -> Real
 
-计算平面 CR3BP 状态相对第二主天体的惯性两体比机械能。
+计算旋转系状态相对第二主天体的惯性两体比机械能。
 
 # Arguments
-- `u`: 旋转系平面状态 `[x, y, vx, vy]`。
+- `u`: 长度为 4、6、20 或 42 的状态；STM 部分被忽略。
 - `t`: 无量纲时间/旋转角。
 - `μ`: 第二主天体的 CR3BP 质量比。
 
@@ -19,21 +19,23 @@ export solve_L1_L2_x
 """
 @inline function compute_ε2(u , t , μ)
 
-    u_inertial = cr3bp_rotating_to_inertial(μ , t, u; center = :p2) 
-
-    r2 = hypot(u_inertial[1]  , u_inertial[2])
-    v2_pow_2 = u_inertial[3]^2+ u_inertial[4]^2
+    dimension = _state_dimension(u)
+    state = view(u, 1:2dimension)
+    u_inertial = cr3bp_rotating_to_inertial(μ, t, state; center=:p2)
+    r2 = norm(view(u_inertial, 1:dimension))
+    v2_pow_2 = sum(abs2, view(u_inertial, dimension+1:2dimension))
 
     return  0.5*v2_pow_2 - μ/r2
 end
 
 """
-    compute_ε2_dot(u, t, μ, p) -> Real
+    compute_ε2_dot(u, t, μ, p; dynamics=cr3bp_eqm!) -> Real
 
-利用 CR3BP 状态导数与自动微分计算 `compute_ε2` 沿轨迹的时间导数。
+利用状态导数与自动微分计算 `compute_ε2` 沿轨迹的时间导数。
+默认采用 CR3BP；四体轨迹应传入 `dynamics=bcr4bp_eqm!`。
 
 # Arguments
-- `u`: 平面旋转系状态 `[x, y, vx, vy]`。
+- `u`: 长度为 4、6、20 或 42 的状态；STM 部分被忽略。
 - `t`: 当前无量纲时间。
 - `μ`: CR3BP 质量比。
 - `p`: 动力学参数，通常为 `Bcr4bp_Aux()`。
@@ -41,10 +43,13 @@ end
 # Returns
 返回标量 `dε₂/dt`。
 """
-@inline function compute_ε2_dot(u , t , μ ,p)
-    du = similar(u) 
-    cr3bp_eqm2D!(du , u , p , t)
-    ∂ε_∂u = ForwardDiff.gradient((u)->compute_ε2(u , t , μ), u)
+@inline function compute_ε2_dot(u, t, μ, p; dynamics=cr3bp_eqm!)
+    dimension = _state_dimension(u)
+    state = collect(view(u, 1:2dimension))
+    du = similar(state)
+    dynamics(du, state, p, t)
+    # 旋转变换不改变 r、v 的范数，因此 ε₂ 没有显式时间项。
+    ∂ε_∂u = ForwardDiff.gradient(state -> compute_ε2(state, t, μ), state)
     return dot(∂ε_∂u,  du)
 end
 
@@ -85,6 +90,101 @@ function compute_jacobi(u::AbstractVector, μ)
     length(u) == 4 && return compute_jacobi(SVector{4}(u), μ)
     length(u) == 6 && return compute_jacobi(SVector{6}(u), μ)
     throw(ArgumentError("Jacobi constant requires a 4- or 6-element state."))
+end
+
+
+"""
+    Hamiltonian(u, θ, aux) -> (HEM, HEMdot, Γ)
+
+计算四体模型下瞬时地月 Jacobi/Hamiltonian 型积分量。
+
+状态格式：
+- 2D：`u = [x, y, vx, vy]`
+- 3D：`u = [x, y, z, vx, vy, vz]`
+
+`θ` 为太阳在地月旋转坐标系中的相位角，单位 rad。
+"""
+@inline function Hamiltonian_EM(u::SVector{4}, θ::Real, aux)
+    x, y, vx, vy = u
+
+    μ  = aux.EMRot.μ
+    ms = aux.EMRot.mus
+    as = aux.EMRot.as
+    ws = aux.EMRot.ws
+
+    cθ, sθ = cos(θ), sin(θ)
+
+    r1 = sqrt((x + μ)^2 + y^2)
+    r2 = sqrt((x + μ - 1)^2 + y^2)
+    rs = sqrt((x - as*cθ)^2 + (y - as*sθ)^2)
+
+    Γ = (
+        (x^2 + y^2) / 2
+        + (1 - μ) / r1
+        + μ / r2
+        + ms / rs
+        - ms / as^2 * (x*cθ + y*sθ)
+    )
+
+    HEM = -(vx^2 + vy^2) + 2Γ
+
+    HEMdot = (
+        -2 * ws * ms * as
+        * (x*sθ - y*cθ)
+        * (inv(rs^3) - inv(as^3))
+    )
+
+    return HEM, HEMdot, Γ
+end
+
+@inline function Hamiltonian_EM(u::SVector{6}, θ::Real, aux )
+    x, y, z, vx, vy, vz = u
+
+    μ  = aux.EMRot.μ
+    ms = aux.EMRot.mus
+    as = aux.EMRot.as
+    ws = aux.EMRot.ws
+
+    cθ, sθ = cos(θ), sin(θ)
+
+    r1 = sqrt((x + μ)^2 + y^2 + z^2)
+    r2 = sqrt((x + μ - 1)^2 + y^2 + z^2)
+    rs = sqrt((x - as*cθ)^2 + (y - as*sθ)^2 + z^2)
+
+    # 旋转离心势只包含 x²+y²，不包含 z²
+    Γ = (
+        (x^2 + y^2) / 2
+        + (1 - μ) / r1
+        + μ / r2
+        + ms / rs
+        - ms / as^2 * (x*cθ + y*sθ)
+    )
+
+    HEM = -(vx^2 + vy^2 + vz^2) + 2Γ
+
+    # 太阳位于参考 xy 平面时，此表达式与二维形式一致
+    HEMdot = (
+        -2 * ws * ms * as
+        * (x*sθ - y*cθ)
+        * (inv(rs^3) - inv(as^3))
+    )
+
+    return HEM, HEMdot, Γ
+end
+
+function Hamiltonian(u::AbstractVector, θ::Real, aux ; coordinate = :EMRot)
+    if coordinate == :EMRot
+        if length(u) == 4
+            return Hamiltonian_EM(SVector{4}(u), θ, aux)
+        elseif length(u) == 6
+            return Hamiltonian_EM(SVector{6}(u), θ, aux)
+        end
+    end
+
+    throw(ArgumentError(
+        "State must contain 4 elements [x,y,vx,vy] " *
+        "or 6 elements [x,y,z,vx,vy,vz]."
+    ))
 end
 
 

@@ -109,13 +109,13 @@ recovered = cr3bp_inertial_to_rotating(μ, t, moon_inertial; center=:p2)
 (moon_inertial = moon_inertial, round_trip_error = maximum(abs, recovered - u0))
 ```
 
-两个转换函数均返回四元 `SVector`，适合在广播和大量重复计算中使用。
+两个转换函数支持四维或六维物理状态，返回同维数的 `SVector`，适合广播和重复计算；不转换 STM。
 
 ## 6. 生成 DRO 并绘图
 
 `generate_DRO`、`generate_halo` 和 `generate_nrho_9_2` 都返回 `PeriodicOrbit`。
 对象的 `x0`、`P`、`C` 和 `sol` 分别表示六维初值、完整周期、Jacobi 常数和一个
-周期上的 ODE 解。
+周期及相邻周期 `[-P, 2P]` 上的稠密 ODE 解。
 
 ```@example tutorial
 dro = generate_DRO(P=pi)

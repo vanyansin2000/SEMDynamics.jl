@@ -6,26 +6,32 @@ export cr3bp_inertial_to_rotating , cr3bp_rotating_to_inertial
 export polar_angle_p2 , unwrap_phase
 
 """
-    cr3bp_inertial_to_rotating(μ, t, state; center=:p1) -> SVector{4}
+    cr3bp_inertial_to_rotating(μ, t, state; center=:p1) -> SVector{4} or SVector{6}
 
-将以指定主天体为原点的平面惯性状态转换到 CR3BP 旋转系。
+将以指定主天体为原点的平面或空间惯性状态转换到 CR3BP 旋转系。
 
 # Arguments
 - `μ`: 系统质量比 ``m₂/(m₁+m₂)``。
 - `t`: 无量纲时间，同时也是旋转角（弧度）。
-- `state`: 惯性状态 `[x, y, vx, vy]`。
+- `state`: 惯性状态 `[x, y, vx, vy]` 或 `[x, y, z, vx, vy, vz]`；不转换 STM。
 
 # Keywords
 - `center=:p1`: 惯性状态原点，可取 `:p1` 或 `:p2`。
 
 # Returns
-返回旋转系静态向量 `[x, y, vx, vy]`。输入中心非法时抛出 `ArgumentError`。
+返回同维数的旋转系静态向量。输入中心或状态维数非法时抛出 `ArgumentError`。
 """
 function cr3bp_inertial_to_rotating end
 
 function cr3bp_inertial_to_rotating(μ::Real, t::Real, state::AbstractVector; kwargs...)
-    length(state) == 4 || throw(ArgumentError("state must contain [x, y, vx, vy]."))
-    return cr3bp_inertial_to_rotating(μ, t, SVector{4}(state); kwargs...)
+    length(state) == 4 && return cr3bp_inertial_to_rotating(μ, t, SVector{4}(state); kwargs...)
+    length(state) == 6 && return cr3bp_inertial_to_rotating(μ, t, SVector{6}(state); kwargs...)
+    throw(ArgumentError("state must contain 4 or 6 elements; STM transformation is not supported."))
+end
+
+function cr3bp_inertial_to_rotating(μ::Real, t::Real, state::SVector{6,T}; kwargs...) where {T<:Real}
+    planar = cr3bp_inertial_to_rotating(μ, t, SVector(state[1], state[2], state[4], state[5]); kwargs...)
+    return SVector(planar[1], planar[2], state[3], planar[3], planar[4], state[6])
 end
 
 # 单一状态向量版本
@@ -49,27 +55,33 @@ end
 
 
 """
-    cr3bp_rotating_to_inertial(μ, t, state; center=:p1) -> SVector{4}
+    cr3bp_rotating_to_inertial(μ, t, state; center=:p1) -> SVector{4} or SVector{6}
 
-将平面 CR3BP 旋转状态转换到以指定主天体为原点的惯性系。
+将平面或空间 CR3BP 旋转状态转换到以指定主天体为原点的惯性系。
 
 # Arguments
 - `μ`: 系统质量比。
 - `t`: 无量纲时间/旋转角。
-- `state`: 旋转系状态 `[x, y, vx, vy]`。
+- `state`: 旋转系状态 `[x, y, vx, vy]` 或 `[x, y, z, vx, vy, vz]`；不转换 STM。
 
 # Keywords
 - `center=:p1`: 输出惯性坐标系的原点，可取 `:p1` 或 `:p2`。
 
 # Returns
-返回惯性系静态向量 `[x, y, vx, vy]`；该函数是
+返回同维数的惯性系静态向量；该函数是
 `cr3bp_inertial_to_rotating` 的逆变换。
 """
 function cr3bp_rotating_to_inertial end
 
 function cr3bp_rotating_to_inertial(μ::Real, t::Real, state::AbstractVector; kwargs...)
-    length(state) == 4 || throw(ArgumentError("state must contain [x, y, vx, vy]."))
-    return cr3bp_rotating_to_inertial(μ, t, SVector{4}(state); kwargs...)
+    length(state) == 4 && return cr3bp_rotating_to_inertial(μ, t, SVector{4}(state); kwargs...)
+    length(state) == 6 && return cr3bp_rotating_to_inertial(μ, t, SVector{6}(state); kwargs...)
+    throw(ArgumentError("state must contain 4 or 6 elements; STM transformation is not supported."))
+end
+
+function cr3bp_rotating_to_inertial(μ::Real, t::Real, state::SVector{6,T}; kwargs...) where {T<:Real}
+    planar = cr3bp_rotating_to_inertial(μ, t, SVector(state[1], state[2], state[4], state[5]); kwargs...)
+    return SVector(planar[1], planar[2], state[3], planar[3], planar[4], state[6])
 end
 
 # 单一状态向量版本

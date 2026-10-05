@@ -37,6 +37,14 @@ uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm! , ode_args , B
 uf , ts , us = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm!))
 ```
 
+`integration` 默认将求解失败和 callback 主动终止均视为失败，返回三个 `nothing`，
+用于拒绝打靶中的碰撞轨迹。需要检查终止结果时，传入 `return_solution=true`：
+
+```julia
+sol = integration(u0, (0.0, 10.0), ode_params(cr3bp_eqm!); return_solution=true)
+sol.retcode # 检查完成、主动终止或数值失败
+```
+
 ### 生成平面 DRO
 
 `generate_DRO` 使用微分修正生成具有指定完整周期的平面 CR3BP 远距逆行轨道。默认种子是周期为
@@ -68,6 +76,8 @@ orbit = generate_DRO(
 )
 ```
 
+`orbit.sol` 保存 `[-P, 2P]` 内的稠密解，供相邻周期查询以避免外插。
+
 ### 生成 Halo 轨道与 9:2 NRHO
 
 Halo 轨道族使用 `branch` 和平动点选择。初值位于 x-z 对称面，形式为
@@ -92,7 +102,8 @@ Halo 与 DRO 使用相同的 `[x, z, vy]` 未知量和 `[y, vx, vz] = 0` 半周�
 
 ### 检测事件
 
-本包提供与 DifferentialEquations.jl 兼容的回调函数。
+本包提供与 DifferentialEquations.jl 兼容的回调函数。碰撞检测使用离散 callback，
+在积分步末记录进入配置半径内的状态；其他穿越事件使用连续 callback。
 
 ```julia
 using SEMDynamics

@@ -15,7 +15,7 @@ export ODESolveFailedError
 # Fields
 - `code::Symbol`: 事件类别，例如 `:enter`、`:perilune` 或 `:p2collision`。
 - `time::Number`: 事件发生的无量纲积分时间。
-- `state::AbstractVector`: 事件根处的状态快照。
+- `state::AbstractVector`: 检测时的状态快照；离散碰撞事件记录积分步末状态。
 """
 struct Event
     code ::Symbol
@@ -46,7 +46,7 @@ Base.showerror(io::IO, error::ODESolveFailedError) = print(io, error.msg)
 @inline function _state_dimension(u::AbstractVector)
     length(u) in (4, 20) && return 2
     length(u) in (6, 42) && return 3
-    throw(ArgumentError("事件回调仅支持长度为 4、6、20 或 42 的状态，得到 $(length(u))"))
+    throw(ArgumentError("仅支持长度为 4、6、20 或 42 的状态，得到 $(length(u))"))
 end
 
 """
@@ -109,21 +109,21 @@ end
 ##————————————————————————————————————————————————————————————————————————————————————
 #停止积分事件 1碰撞
 # 撞击事件条件函数
-"""第二主天体表面的有符号距离；负值表示位于碰撞区域内。"""
+"""判断积分步末状态是否位于第二主天体碰撞区域内。"""
 function p2_collision_condition(u, t, integrator , scale)
     p = integrator.p  # 获取系统参数
     μ = p.EMRot.μ
 
     _ , r2 = state_from_r1_r2(u , μ)
-    return r2 - scale * p.EMRot.r_p2
+    return r2 - scale * p.EMRot.r_p2 < 0.0
 end
 
-"""第一主天体表面的有符号距离；负值表示位于碰撞区域内。"""
+"""判断积分步末状态是否位于第一主天体碰撞区域内。"""
 function p1_collision_condition(u, t, integrator , scale )
     p = integrator.p  # 获取系统参数
     μ = p.EMRot.μ
     r1 , _ = state_from_r1_r2(u, μ)
-    return r1 - scale * p.EMRot.r_p1
+    return r1 - scale * p.EMRot.r_p1 < 0.0
 end
 
 # 撞击事件影响函数：终止积分
@@ -157,35 +157,35 @@ end
 
 
 """
-    cb_p2collision(event_storage; terminate=true, scale=1.0) -> ContinuousCallback
+    cb_p2collision(event_storage; terminate=true, scale=1.0) -> DiscreteCallback
 
-检测从外向内穿越第二主天体表面的事件，并记录 `:p2collision`。
+在每个积分步末检查是否进入第二主天体碰撞区域，并记录 `:p2collision`。
+采用离散检查，不定位边界根；事件时间和状态是检测到碰撞的积分步末值。
 
 # Keywords
 - `terminate=true`: 记录后是否终止积分。
 - `scale=1.0`: 相对默认无量纲半径 `p.EMRot.r_p2` 的缩放系数。
 
 # Returns
-返回仅响应负向穿越的 `ContinuousCallback`。
+返回 `DiscreteCallback`。`terminate=false` 时，在区域内的每个积分步均会记录事件。
 """
-function cb_p2collision(event_storage::Vector{Event} ;terminate = true , scale = 1.0)
+function cb_p2collision(event_storage::Vector{Event} ;terminate = true , scale = 1.0 )
     condition_wrapper(u, t, integrator) = p2_collision_condition(u, t, integrator, scale)
     affect_wrapper = (integrator) -> affect_p2collision!(integrator, event_storage, terminate)
-    # Collision entry is a positive-to-negative crossing.  Use the negative
-    # crossing callback and locate the surface before the singular interior.
-    return ContinuousCallback(condition_wrapper, nothing, affect_wrapper; rootfind=true)
+    # 离散步末检查用于拒绝进入碰撞区域的打靶轨迹。
+    return DiscreteCallback(condition_wrapper, affect_wrapper; )
 end
 
 """
-    cb_p1collision(event_storage; terminate=true, scale=1.0) -> ContinuousCallback
+    cb_p1collision(event_storage; terminate=true, scale=1.0) -> DiscreteCallback
 
-检测从外向内穿越第一主天体表面的事件并记录 `:p1collision`。关键字含义与
+在积分步末检测第一主天体碰撞区域并记录 `:p1collision`。离散检测语义和关键字含义与
 `cb_p2collision` 相同。
 """
-function cb_p1collision(event_storage::Vector{Event} ;terminate = true, scale = 1.0)
+function cb_p1collision(event_storage::Vector{Event} ;terminate = true, scale = 1.0 )
     condition_wrapper(u, t, integrator) = p1_collision_condition(u, t, integrator, scale)
     affect_wrapper = (integrator) -> affect_p1collision!(integrator, event_storage, terminate)
-    return ContinuousCallback(condition_wrapper, nothing, affect_wrapper; rootfind=true)
+    return DiscreteCallback(condition_wrapper, affect_wrapper; )
 end
 
 
@@ -214,20 +214,21 @@ function affect_p2_sphere!(
 end
 
 """
-    cb_escape(event_storage; scale=1.0, terminate=true, root_find=true)
+    cb_escape(event_storage; scale=1.0, terminate=true, rootfind=true)
 
 检测轨迹从内向外穿越第二主天体作用球的事件。球半径为
 `scale * integrator.p.EMRot.d2lim`，事件代码为 `:escape`。
 
 # Returns
 返回仅响应正向穿越的 `ContinuousCallback`；`terminate` 控制是否终止积分，
-`root_find` 控制是否定位精确事件根。
+`rootfind` 控制是否定位精确事件根。
 """
 function cb_escape(
     event_storage::Vector{Event};
     scale::Real=1.0,
     terminate::Bool=true,
-    root_find::Bool=true,
+    rootfind::Bool=true,
+    root_find::Bool=rootfind,
 )
     scale > 0 || throw(ArgumentError("scale must be positive."))
     condition_wrapper(u, t, integrator) = p2_sphere_condition(u, t, integrator, scale)
@@ -244,7 +245,7 @@ function cb_escape(
 end
 
 """
-    cb_enter(event_storage; scale=1.0, terminate=true, root_find=true)
+    cb_enter(event_storage; scale=1.0, terminate=true, rootfind=true)
 
 检测轨迹从外向内穿越第二主天体作用球的事件，是 `cb_escape` 的反向事件。
 球半径为 `scale * integrator.p.EMRot.d2lim`，事件代码为 `:enter`。
@@ -256,7 +257,8 @@ function cb_enter(
     event_storage::Vector{Event};
     scale::Real=1.0,
     terminate::Bool=true,
-    root_find::Bool=true,
+    rootfind::Bool=true,
+    root_find::Bool=rootfind,
 )
     scale > 0 || throw(ArgumentError("scale must be positive."))
     condition_wrapper(u, t, integrator) = p2_sphere_condition(u, t, integrator, scale)
@@ -429,7 +431,7 @@ function _cb_apse(
     terminate_far::Bool=false,
     near_scale=(0.0, Inf),
     far_scale=(0.0, Inf),
-    root_find::Bool=true,
+    rootfind::Bool=true,
 )
     affect_wrapper = integrator -> _affect_apse!(
         integrator,
@@ -448,21 +450,21 @@ function _cb_apse(
         condition,
         affect_wrapper,
         affect_wrapper;
-        rootfind = root_find,
+        rootfind = rootfind,
         save_positions = (false, true),
     )
 end
 
 """
     cb_apse_p1(event_storage; terminate_perigee=false, terminate_apogee=false,
-               perigee_scale=(0, Inf), apogee_scale=(0, Inf), root_find=true)
+               perigee_scale=(0, Inf), apogee_scale=(0, Inf), rootfind=true)
 
 检测相对第一主天体的近地点与远地点，分别记录 `:perigee` 和 `:apogee`。
 
 # Keywords
 - `terminate_perigee`, `terminate_apogee`: 是否在对应事件处终止。
 - `perigee_scale`, `apogee_scale`: 允许记录的距离开区间 `(lower, upper)`。
-- `root_find=true`: 是否由回调定位 `r⋅v=0` 的根。
+- `rootfind=true`: 是否由回调定位 `r⋅v=0` 的根。
 
 # Returns
 返回同时响应正、负方向积分的 `ContinuousCallback`。
@@ -473,7 +475,8 @@ function cb_apse_p1(
     terminate_apogee::Bool=false,
     perigee_scale=(0.0, Inf),
     apogee_scale=(0.0, Inf),
-    root_find::Bool=true,
+    rootfind::Bool=true,
+    root_find::Bool=rootfind,
 )
     return _cb_apse(
         event_storage;
@@ -484,13 +487,13 @@ function cb_apse_p1(
         terminate_far=terminate_apogee,
         near_scale=perigee_scale,
         far_scale=apogee_scale,
-        root_find,
+        rootfind=root_find,
     )
 end
 
 """
     cb_apse_p2(event_storage; terminate_perilune=false, terminate_apolune=false,
-               perilune_scale=(0, Inf), apolune_scale=(0, Inf), root_find=true)
+               perilune_scale=(0, Inf), apolune_scale=(0, Inf), rootfind=true)
 
 检测相对第二主天体的近月点与远月点，分别记录 `:perilune` 和 `:apolune`。
 接口与 `cb_apse_p1` 对称。
@@ -504,7 +507,8 @@ function cb_apse_p2(
     terminate_apolune::Bool=false,
     perilune_scale=(0.0, Inf),
     apolune_scale=(0.0, Inf),
-    root_find::Bool=true,
+    rootfind::Bool=true,
+    root_find::Bool=rootfind,
 )
     return _cb_apse(
         event_storage;
@@ -515,12 +519,12 @@ function cb_apse_p2(
         terminate_far=terminate_apolune,
         near_scale=perilune_scale,
         far_scale=apolune_scale,
-        root_find,
+        rootfind=root_find,
     )
 end
 
 """
-    cb_perilune(event_storage; terminate=false, scale=(0, Inf), root_find=true)
+    cb_perilune(event_storage; terminate=false, scale=(0, Inf), rootfind=true)
         -> ContinuousCallback
 
 创建仅记录 `:perilune` 的兼容回调；新代码可优先使用 `cb_apse_p2`。
@@ -529,19 +533,20 @@ function cb_perilune(
     event_storage::Vector{Event};
     terminate::Bool=false,
     scale=(0.0, Inf),
-    root_find::Bool=true,
+    rootfind::Bool=true,
+    root_find::Bool=rootfind,
 )
     return cb_apse_p2(
         event_storage;
         terminate_perilune=terminate,
         perilune_scale=scale,
         apolune_scale=(Inf, Inf),
-        root_find,
+        rootfind=root_find,
     )
 end
 
 """
-    cb_apolune(event_storage; terminate=false, scale=(0, Inf), root_find=true)
+    cb_apolune(event_storage; terminate=false, scale=(0, Inf), rootfind=true)
         -> ContinuousCallback
 
 创建仅记录 `:apolune` 的回调；也可使用完整的 `cb_apse_p2` 接口。
@@ -550,14 +555,15 @@ function cb_apolune(
     event_storage::Vector{Event};
     terminate::Bool=false,
     scale=(0.0, Inf),
-    root_find::Bool=true,
+    rootfind::Bool=true,
+    root_find::Bool=rootfind,
 )
     return cb_apse_p2(
         event_storage;
         terminate_apolune=terminate,
         perilune_scale=(Inf, Inf),
         apolune_scale=scale,
-        root_find,
+        rootfind=root_find,
     )
 end
 
